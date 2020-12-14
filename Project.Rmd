@@ -1,0 +1,324 @@
+---
+title: "Analysis-of-Suicide-Trends-Globally-in-R"
+Script Owner: "Abhishek Dubey"
+output: html_notebook
+---
+
+Installing Packages 
+```{r}
+install.packages("ggalt")
+install.packages("countrycode")
+install.packages("rworldmap")
+install.packages("gridExtra")
+install.packages("broom")
+install.packages("magrittr")
+
+```
+
+
+```{r}
+library(tidyverse)
+library(ggalt)
+library(countrycode)
+library(rworldmap)
+library(gridExtra)
+library(broom)
+library(readr)
+library(magrittr)
+```
+Data Import
+```{r}
+
+ Country_df<- read_csv("https://raw.githubusercontent.com/Abhidubey96/Analysis-of-Suicide-Trends-Globally-in-R/main/Country%20Data.csv")
+
+ Suicide_df <- read_csv("https://raw.githubusercontent.com/Abhidubey96/Analysis-of-Suicide-Trends-Globally-in-R/main/Suicide%20Data%20by%20Country.csv")
+
+```
+View Data
+```{r}
+
+View(Country_df)
+View(Suicide_df)
+
+```
+Merging Both 2 files
+```{r}
+df <- cbind(Suicide_df, Country_df)
+
+View(df)
+```
+
+CLeaning and Wrangling of data
+```{r}
+summary(df)
+
+str(df)
+
+# Removing unnecessary columns 
+# Renaming the variable names 
+df <- df %>% 
+  select(-c(`HDI for year`, `suicides/100k pop`)) %>%
+  rename(gdp_per_year = `gdp_for_year ($)`, 
+         gdp_per_capita = `gdp_per_capita ($)`, 
+         country_year = `country-year`) %>%
+  as.data.frame()
+
+View(df)
+str(df)
+
+```
+Extensive Cleaning and Wrangling in Data
+```{r}
+# data is missing for 2016 year for many countries
+# every country should have 12 observations based upon the age and gender. But Data for 2016 shows less entries. Also some countries are missing totally.
+# So its better to remove it from data frame df
+df <- df %>%
+  filter(year != 2016) %>% 
+  select(-country_year)
+
+# So now we have only data from 1985 to 2015
+View(df)
+
+# Making Continent variable by using country code library
+df$continent <- countrycode(sourcevar = df[, "country"],
+                              origin = "country.name",
+                              destination = "continent")
+
+View(df)
+
+#Changing Data type for variables age and generation and making them ordinal by using factor function
+
+df$age <- factor(df$age, ordered = T, 
+                   levels = c("5-14 years",
+                              "15-24 years", 
+                              "25-34 years", 
+                              "35-54 years", 
+                              "55-74 years", 
+                              "75+ years"))
+
+df$generation <- factor(df$generation, 
+                   ordered = T, 
+                   levels = c("G.I. Generation", 
+                              "Silent",
+                              "Boomers", 
+                              "Generation X", 
+                              "Millenials", 
+                              "Generation Z"))
+
+# Global suicide rate over time 
+Global <- (sum(as.numeric(df$suicides_no)) / sum(as.numeric(df$population))) * 100000
+
+View(df)
+
+summary(df)
+glimpse(df)
+
+# Now our Data Frame is cleaned and ready for visualizations
+```
+Visualization 1
+Heat Map of suicide cases globally
+
+Iteration 1
+This cell will lot of time because suicides no entries are more, better to comment this cell.
+```{r}
+
+mapdata <- joinCountryData2Map(df, joinCode = "NAME", nameJoinColumn = "country")
+
+mapCountryData(mapdata, 
+nameColumnToPlot="suicides_no",  
+colourPalette = "heat",
+mapTitle="Total suicide cases globally from 1985 to 2015",
+mapRegion = "world",
+oceanCol="deepskyblue",
+catMethod = "pretty")
+```
+Iteration 2
+Adding suicide per 100k population
+
+```{r}
+
+region <- df %>%
+  group_by(country) %>%
+  summarize(suicide_per_100k = (sum(as.numeric(suicides_no)) / sum(as.numeric(population))) * 100000)
+
+countrydata1 <- joinCountryData2Map(region, joinCode = "NAME", nameJoinColumn = "country")
+
+par(mar=c(0, 0, 0, 0)) # margins
+
+
+mapCountryData(countrydata1, 
+nameColumnToPlot="suicide_per_100k",  
+colourPalette = "heat",
+mapTitle="Total suicide cases globally as per (suicide per 100k population). Shows overall cases by country from 1985 to 2015",
+mapRegion = "world",
+oceanCol="deepskyblue", 
+missingCountryCol="gray",
+borderCol = "black",
+catMethod = "pretty")
+```
+Visualizing suicide cases for america and europe
+```{r}
+
+
+region <- df %>%
+  group_by(country) %>%
+  summarize(suicide_per_100k = (sum(as.numeric(suicides_no)) / sum(as.numeric(population))) * 100000)
+
+countrydata <- joinCountryData2Map(region, joinCode = "NAME", nameJoinColumn = "country")
+
+par(mar=c(0, 0, 0, 0)) # margins
+mapCountryData(countrydata, 
+nameColumnToPlot="suicide_per_100k", 
+mapTitle="Suicide cases in europe",
+mapRegion = "europe",
+oceanCol="deepskyblue", 
+missingCountryCol="gray",
+borderCol = "black",
+catMethod = "pretty")
+
+
+
+mapCountryData(countrydata, 
+nameColumnToPlot="suicide_per_100k", 
+mapTitle="Suicide cases in north america",
+mapRegion = "north america",
+oceanCol="deepskyblue", 
+missingCountryCol="gray",
+borderCol = "black",
+catMethod = "pretty")
+```
+
+
+Visualization 2
+
+What is the relation between age and generation over years from 1985 to 2015 suicide cases per 100k population?
+Is it True that new generation suicide cases globally are growing rapidly?
+
+To Answer above question, we will follow below iterations
+
+visualization for age varibale
+```{r}
+df %>%
+  group_by(age) %>%
+  summarize(suicide_per_100k = (sum(as.numeric(suicides_no)) / sum(as.numeric(population))) * 100000) %>%
+  ggplot(aes(x = age, y = suicide_per_100k, fill = age)) + 
+  geom_bar(stat = "identity") + 
+  labs(title = "Global suicides per 100k, by Age",
+       x = "Age", 
+       y = "Suicides per 100k") +
+  theme(legend.position = "none") + 
+  scale_y_continuous(breaks = seq(0, 30, 1), minor_breaks = F)
+```
+visualization of generation variable
+```{r}
+df %>%
+  group_by(generation) %>%
+  summarize(suicide_per_100k = (sum(as.numeric(suicides_no)) / sum(as.numeric(population))) * 100000) %>%
+  ggplot(aes(x = generation, y = suicide_per_100k, fill = generation)) + 
+  geom_bar(stat = "identity") + 
+  labs(title = "Global suicides per 100k, by generation",
+       x = "generation", 
+       y = "Suicides per 100k") +
+  theme(legend.position = "none") + 
+  scale_y_continuous(breaks = seq(0, 30, 1), minor_breaks = F)
+```
+
+final visualization by merging 1st and 2 nd visualization of age and generation. plotting them with year ( over time )
+```{r}
+
+df %>%
+  group_by(generation, age, year) %>%
+  summarize(suicide_per_100k = (sum(as.numeric(suicides_no)) / sum(as.numeric(population))) * 100000) %>%
+  ggplot(aes(x = year, y = suicide_per_100k, col = factor(generation, ordered = F))) + 
+  geom_point() + 
+  geom_line() + 
+  facet_grid(age ~ ., scales = "free_y") + 
+  scale_x_continuous(breaks = seq(1985, 2015, 5), minor_breaks = NULL) +
+  labs(title = "Relationship between Generations, Age per group & Year from 1985 to 2015", 
+       x = "Year", 
+       y = "Suicides per 100k", 
+       col = "Generation") + 
+  theme(legend.position = "bottom")
+```
+
+
+
+Visualization 3
+
+What is the global trend of suicide cases per 100k population from 1985 to 2015?
+
+If we talk about some specific countries from Europe and North America what’s the trend?
+
+Iteration 1
+
+Analyzing countries with high gdp per capita income
+
+```{r}
+library(sqldf)
+
+gdp_df <-sqldf("select country, sum(gdp_per_capita) as gdp from df group by country")
+gdp_df
+
+# finding 5 countries with max gdp per capita income
+
+gdp_df1 <-sqldf("select country, gdp from gdp_df where gdp > 14300000")
+gdp_df1
+
+```
+Plotting
+```{r}
+ggplot(data=gdp_df1, aes(x= country, y=gdp)) +
+geom_bar(stat="identity")
+```
+
+
+
+Iteration 2
+
+Checking Visualization suicide trend over time
+For all Countries 
+```{r}
+df %>%
+  group_by(year) %>%
+  summarize(population = sum(population), 
+            suicides = sum(suicides_no), 
+            suicides_per_100k = (suicides / population) * 100000) %>%
+  ggplot(aes(x = year, y = suicides_per_100k)) + 
+  geom_line(col = "red", size = 1) + 
+  geom_point(col = "red", size = 2) + 
+  labs(title = "Global Suicides (per 100k)",
+       x = "Year", 
+       y = "Suicides per 100k") + 
+  scale_x_continuous(breaks = seq(1985, 2015, 2)) + 
+  scale_y_continuous(breaks = seq(10, 20))
+```
+
+Iteration 3
+
+HIGH GDP countries trend of suicide cases over time 
+Checking suicide cases for specific countries
+
+```{r}
+
+df_specific <- df %>%
+  filter(country %in% c("Iceland", 
+                        "Luxembourg",
+                        "Norway", 
+                        "Switzerland", 
+                        "United States"))
+
+df_specific %>% 
+  group_by(country, year) %>%
+  summarize(suicide_per_100k = (sum(as.numeric(suicides_no)) / sum(as.numeric(population))) * 100000) %>%
+  ggplot(aes(x = year, y = suicide_per_100k, col = country)) + 
+  geom_smooth(se = F, span = 0.2) +
+  scale_x_continuous(breaks = seq(1985, 2015, 2), minor_breaks = F) + 
+  labs(title = " Suicide cases for United States, Iceland, Luxembourg, Switzerland, Norway", 
+       subtitle = "Suicides per 100k population globally, 1985 - 2015", 
+       x = "Year ", 
+       y = "Suicides per 100k Globally", 
+       col = "Country")
+```
+
+
+
